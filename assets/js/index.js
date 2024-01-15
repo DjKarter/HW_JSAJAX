@@ -1,10 +1,12 @@
 import {getBeer} from "./API.js";
 
-const debounce = (func, ms= 500) => {
+const debounce = (func, ms = 500) => {
     let timer;
     return (...args) => {
         clearTimeout(timer);
-        timer = setTimeout(() => { func.apply(this, args); }, ms);
+        timer = setTimeout(() => {
+            func.apply(this, args);
+        }, ms);
     };
 }
 
@@ -18,14 +20,15 @@ let index = 0;
 let searchBoxInput = '';
 const button = document.querySelector(".secret");
 button.innerHTML = '<img src="/assets/secret/icon.png"  alt="random beer"/>';
-button.onclick = function() {searchBox.placeholder = '(✯◡✯)  (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧  ╰(▔∀▔)╯ ٩(｡•́‿•̀｡)۶'};
+button.onclick = function () {
+    searchBox.placeholder = '(✯◡✯)  (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧  ╰(▔∀▔)╯ ٩(｡•́‿•̀｡)۶'
+};
 
 
 const addItemToLS = (key, value) => {
     try {
         localStorage.setItem(key, JSON.stringify(value));
-    }
-    catch (error) {
+    } catch (error) {
         localStorage.clear();
     }
 }
@@ -33,18 +36,20 @@ const addItemToLS = (key, value) => {
 const getItemFromLS = (key) => {
     try {
         return JSON.parse(localStorage.getItem(key));
-    }
-    catch (error) {
+    } catch (error) {
         console.log('Error in the Local Storage');
         return null;
     }
 }
 
 const initLS = (elems) => {
-        elems.forEach((elem) => {addItemToLS(elem[0], elem[1])});
+    elems.forEach((elem) => {
+        addItemToLS(elem[0], elem[1])
+    });
 }
 
-const showBeerInfo = (elem, beer) =>{
+//Здесь выводим информацию о пиве, добавляем в LS и историю поиска.
+const showBeerInfo = (elem, beer, fromHistory = false) => {
     resultBox.textContent = '';
     const {name, description, ibu, abv} = beer;
     resultBox.insertAdjacentHTML('beforeend',
@@ -55,76 +60,104 @@ const showBeerInfo = (elem, beer) =>{
         `<span><b>ABV:</b> ${abv}</span>\n`
     );
 
-    /**
-    const beerStorage = getItemFromLS('beerStorage');
-    console.log(beerStorage);
-    beerStorage[name] = beer;
-    addItemToLS('beerStorage');
-     **/
-
     if (lastSearchedNames.filter((elem) => elem[1] === name).length === 0) {
         if (index > 2) {
             lastSearchedNames[index % 3][0].remove();
         }
         const elemClone = elem.cloneNode(true);
+        elemClone.onclick = () => {
+            showBeerInfo(elemClone, beer, true)
+        };
         lastSearchedNames[index++ % 3] = [elemClone, name];
         historyList.insertBefore(elemClone, historyList.firstChild);
     }
+    if (!fromHistory) {
+        const beerStorage = getItemFromLS('beerStorage');
+        if (beerStorage[searchBoxInput] && beerStorage[searchBoxInput].filter(elem => elem.name === beer.name).length === 0) {
+            beerStorage[searchBoxInput].push(beer);
+
+        } else if (!beerStorage[searchBoxInput]) {
+            beerStorage[searchBoxInput] = [beer]
+        }
+        addItemToLS('beerStorage', beerStorage);
+    }
+
 }
 
-const addSuggestion = (beer, searched=false) => {
-    //console.log(beer);
+const addSuggestion = (beer, searched = false) => {
     const temp_li = document.createElement('li');
     const temp_a = document.createElement('a');
     if (searched)
         temp_a.classList.add('searched');
 
     temp_a.textContent = beer.name;
-    temp_a.href = '#';
+    temp_a.href = '#RefreshStopper' + beer.name;
 
     temp_li.appendChild(temp_a);
-    temp_li.onclick = function () {showBeerInfo(temp_li, beer)};
+    temp_li.onclick = () => {
+        showBeerInfo(temp_li, beer)
+    };
     suggestionsList.appendChild(temp_li);
 }
 
 const onInput = async (event) => {
     status.textContent = 'Beerding';
     searchBoxInput = event.target.value;
+
     if (searchBoxInput.length > 0) {
-        /**
         const beerStorage = getItemFromLS('beerStorage');
+        let searchedBeer = [];
+        let beersponse;
 
-        let searchedBeer = null;
-
-        if (beerStorage !== null && Object.keys(beerStorage).length > 0) {
+        //Проверка LS на наличие похожих запросов
+        if (Object.keys(beerStorage).length > 0) {
             Object.keys(beerStorage).forEach((elem) => {
-                if (elem.startsWith(searchBoxInput)) {
-                    searchedBeer = elem;
+                if (elem.toLowerCase().startsWith(searchBoxInput.toLowerCase())) {
+                    searchedBeer = [...searchedBeer, ...beerStorage[elem]];
                 }
             })
-        }**/
+            const temp = {};
+            searchedBeer = searchedBeer.filter(({name}) => (!temp[name] && (temp[name] = 1)));
+        }
 
-        let beersponse;
+        //Достаем пиво со склада
         try {
             beersponse = (await getBeer(searchBoxInput));
             status.textContent = '';
-        }
-        catch (error) {
+        } catch (error) {
             status.textContent = `BeError : ${error}`;
+            beersponse = {};
         }
 
-        suggestionsList.innerHTML = '';
-        /**
-        if (searchedBeer !== null) {
-            beersponse.slice(0,9).forEach((elem) => {
-                addSuggestion(elem);
-            });
-            addSuggestion(searchedBeer);
+
+        if (beersponse.length === 0) {
+            suggestionsList.innerHTML = 'This beer has not yet been created!';
         } else {
-            **/
-            beersponse.forEach((elem) => {
-                addSuggestion(elem);
-            });
+            suggestionsList.innerHTML = '';
+
+            //Выводим suggestions, сначала из LS.
+            if (searchedBeer.length > 0) {
+                let searchedNumb = Math.min(searchedBeer.length, 5);
+
+                searchedBeer.slice(0, 5).forEach(elem => {
+                    addSuggestion(elem, true)
+                });
+
+                beersponse.forEach((elem) => {
+                    //Боремся с дубликатами
+                    if (searchedNumb === 10 || searchedBeer.filter((el) => el.name === elem.name).length > 0)
+                        return;
+                    ++searchedNumb;
+                    addSuggestion(elem);
+
+                });
+
+            } else {
+                beersponse.forEach((elem) => {
+                    addSuggestion(elem);
+                });
+            }
+        }
 
     } else {
         suggestionsList.innerHTML = '';
@@ -132,15 +165,11 @@ const onInput = async (event) => {
     }
 }
 
-
-
 const start = () => {
     initLS([['beerStorage', {}]]);
-    console.log( getItemFromLS('beerStorage'));
+    console.log(getItemFromLS('beerStorage'));
     searchBox.oninput = debounce(onInput);
     window.addEventListener('storage', () => console.log(localStorage));
 }
 
 start();
-
-//showBeerInfo('beer');
